@@ -137,6 +137,20 @@ button{font:inherit;cursor:pointer}
 }
 .chip-filtro span{font-size:.88rem;color:var(--blu);font-weight:600;white-space:nowrap}
 .chip-filtro input,.chip-filtro select{width:95px;padding:6px 8px}
+.ricerca-articolo{position:relative;max-width:340px;margin-top:10px}
+.tendina{
+  position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:30;
+  background:#fff;border:1px solid var(--bordo);border-radius:10px;
+  box-shadow:var(--ombra);max-height:250px;overflow-y:auto;
+}
+.tendina .voce{
+  padding:9px 13px;font-size:.9rem;cursor:pointer;
+  display:flex;justify-content:space-between;gap:10px;align-items:center;
+}
+.tendina .voce:hover{background:var(--blu-chiaro)}
+.tendina .voce .titolo-art{color:var(--testo-2);font-size:.82rem;font-variant-numeric:tabular-nums}
+.tendina .voce.gia{color:var(--blu);font-weight:600}
+.tendina .nessuna{padding:10px 13px;font-size:.86rem;color:var(--testo-2)}
 .lista-articoli{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
 .lista-articoli label.tag{
   display:flex;align-items:center;gap:7px;margin:0;
@@ -279,31 +293,31 @@ tbody tr:last-child td{border-bottom:0}
     <div class="combo-desc" id="ris-combo"></div>
     <div class="griglia-risultati">
       <div class="ris">
-        <div class="etich">Ne iniziale</div>
+        <div class="etich">Partenza da:</div>
         <div class="val piccolo" id="ris-ne-iniziale">—</div>
       </div>
       <div class="ris">
-        <div class="etich">Ne intermedio</div>
+        <div class="etich">Ne intermedio:</div>
         <div class="val piccolo" id="ris-ne-intermedio">—</div>
         <div class="nota-teorica" id="ris-ne-intermedio-teorico"></div>
       </div>
       <div class="ris">
-        <div class="etich">Ne finale</div>
+        <div class="etich">Ne finale:</div>
         <div class="val" id="ris-ne-finale">—</div>
         <div class="nota-teorica" id="ris-ne-teorico"></div>
       </div>
       <div class="ris">
-        <div class="etich">Nm finale</div>
+        <div class="etich">Nm finale:</div>
         <div class="val" id="ris-nm">—</div>
         <div class="nota-teorica" id="ris-nm-nota"></div>
       </div>
       <div class="ris">
-        <div class="etich">Finezza teorica</div>
+        <div class="etich">Finezza teorica:</div>
         <div class="val" id="ris-finezza">—</div>
         <div class="nota-teorica">da validare con prove Filmar</div>
       </div>
       <div class="ris">
-        <div class="etich">Capi totali</div>
+        <div class="etich">Capi totali:</div>
         <div class="val" id="ris-capi">—</div>
       </div>
     </div>
@@ -341,7 +355,11 @@ tbody tr:last-child td{border-bottom:0}
     </div>
 
     <h3 style="margin-top:18px">Articoli utilizzabili</h3>
-    <div style="display:flex;gap:8px;margin-top:4px">
+    <div class="ricerca-articolo">
+      <input type="search" id="cerca-articolo-ricerca" placeholder="Cerca e aggiungi un articolo…" autocomplete="off" aria-label="Cerca articolo da aggiungere">
+      <div class="tendina" id="tendina-articoli" hidden></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
       <button class="btn secondario" id="btn-sel-tutti" style="padding:6px 12px;font-size:.82rem">Seleziona tutti</button>
       <button class="btn secondario" id="btn-sel-nessuno" style="padding:6px 12px;font-size:.82rem">Nessuno</button>
     </div>
@@ -409,6 +427,8 @@ tbody tr:last-child td{border-bottom:0}
     <div class="form-archivio">
       <div style="grid-column:span 2"><label for="a-nome">Articolo</label><input type="text" id="a-nome"></div>
       <div><label for="a-ne">Titolo Ne</label><input type="number" id="a-ne" min="1" step="0.1"></div>
+      <div><label for="a-nm">Titolo Nm</label><input type="number" id="a-nm" min="1" step="0.1"></div>
+      <div><label for="a-capi">Capi</label><input type="number" id="a-capi" min="1" step="1" value="1"></div>
       <div><label for="a-cotone">% cotone</label><input type="number" id="a-cotone" min="0" max="100" value="0"></div>
       <div><label for="a-cashmere">% cashmere</label><input type="number" id="a-cashmere" min="0" max="100" value="0"></div>
       <div><label for="a-seta">% seta</label><input type="number" id="a-seta" min="0" max="100" value="0"></div>
@@ -451,6 +471,7 @@ const CONFIG = {
   FATTORE_NM: 1.69,          // Nm finale = Ne finale arrotondato × fattore
   MAX_CAPI_RICERCA: 5,       // capi totali massimi di default nella ricerca automatica
   MAX_RISULTATI: 100,        // numero massimo di risultati mostrati di default
+  MAX_ARTICOLI_EVIDENZA: 10, // articoli mostrati in rilievo nella ricerca (i piu' recenti/principali)
   LIMITE_ENUMERAZIONE: 8000  // limite di sicurezza sulle combinazioni raccolte
 };
 
@@ -535,6 +556,17 @@ function salvaPreferiti(){ salvaDato(CHIAVE_PREFERITI, preferiti); }
 // Arrotondamento matematico classico (mai bancario): 0,5 → per eccesso
 function arrotonda(x) { return Math.floor(x + 0.5); }
 function arrotonda1(x) { return Math.floor(x * 10 + 0.5) / 10; }
+/* Arrotondamento "commerciale" del Ne intermedio: si parte dall'intero normale,
+   poi solo se la cifra delle unita' e' 9 si sale alla decina (39 -> 40)
+   e solo se e' 1 si scende alla decina (31 -> 30). Tutti gli altri valori
+   restano invariati (32 resta 32, 38 resta 38, 45 resta 45). */
+function arrotondaCommerciale(x) {
+  const n = arrotonda(x);
+  const unita = n % 10;
+  if (unita === 9) return n + 1;
+  if (unita === 1 && n > 1) return n - 1;
+  return n;
+}
 
 function finezzaDaNe(neTeorico) {
   for (const r of REGOLE_FINEZZA) if (neTeorico >= r.min) return r.finezza;
@@ -553,13 +585,18 @@ function calcolaCombinazione(voci) {
 
   let sommaPesi = 0;
   let capiTotali = 0;
-  const perNe = new Map(); // Ne → capi totali (per il Ne iniziale)
+  const perTitolo = new Map(); // "ne/capiArticolo" -> { ne, capiArt, capi usati }
 
   for (const v of valide) {
-    const peso = v.capi / v.art.ne;
+    // capiArt: capi di cui e' gia' composto l'articolo (es. 2 per un Ne 44/2); 1 = capo unico
+    const capiArt = v.art.capi > 1 ? Math.floor(v.art.capi) : 1;
+    const peso = v.capi * capiArt / v.art.ne; // massa: un 44/2 equivale a un Ne 22 singolo
     sommaPesi += peso;
     capiTotali += v.capi;
-    perNe.set(v.art.ne, (perNe.get(v.art.ne) || 0) + v.capi);
+    const chiave = v.art.ne + "/" + capiArt;
+    const g = perTitolo.get(chiave) || { ne: v.art.ne, capiArt, capi: 0 };
+    g.capi += v.capi;
+    perTitolo.set(chiave, g);
   }
 
   const neTeorico = 1 / sommaPesi;
@@ -570,17 +607,21 @@ function calcolaCombinazione(voci) {
   // Ne intermedio: titolo equivalente espresso sul numero totale di capi.
   // Esempio: Ne 60/1 + Ne 30/1 -> Ne teorico 20 su 2 capi -> Ne 40/2
   const neIntermedioTeorico = neTeorico * capiTotali;
-  const neIntermedio = "Ne " + arrotonda(neIntermedioTeorico) + "/" + capiTotali;
+  const neIntermedio = "Ne " + arrotondaCommerciale(neIntermedioTeorico) + "/" + capiTotali;
 
-  // Ne iniziale: "Ne 60/3" oppure "Ne 60/2 + Ne 30/1"
-  const gruppi = [...perNe.entries()].sort((a,b) => b[0]-a[0]);
-  const neIniziale = gruppi.map(([ne,c]) => "Ne " + ne + "/" + c).join(" + ");
+  // Ne iniziale: "Ne 60/3", "Ne 60/2 + Ne 30/1", e per i gia' ritorti "Ne 44/2" o "Ne 44/2 ×2"
+  const gruppi = [...perTitolo.values()].sort((a,b) => b.ne - a.ne || a.capiArt - b.capiArt);
+  const neIniziale = gruppi.map(g =>
+    g.capiArt === 1
+      ? "Ne " + g.ne + "/" + g.capi
+      : "Ne " + g.ne + "/" + g.capiArt + (g.capi > 1 ? " ×" + g.capi : "")
+  ).join(" + ");
 
   // Composizione ponderata sulla massa
   const composizione = {};
   for (const f of FIBRE) {
     let s = 0;
-    for (const v of valide) s += (v.capi / v.art.ne) * (Number(v.art[f.chiave]) || 0);
+    for (const v of valide) s += (v.capi * (v.art.capi > 1 ? Math.floor(v.art.capi) : 1) / v.art.ne) * (Number(v.art[f.chiave]) || 0);
     composizione[f.chiave] = s / sommaPesi;
   }
   // Arrotonda a 1 decimale garantendo somma 100
@@ -674,7 +715,7 @@ function disegnaRighe() {
       onchange: e => { r.idArt = e.target.value || null; aggiornaRisultati(); disegnaRighe(); } });
     sel.append(el("option", { value: "" }, "— Seleziona articolo —"));
     for (const a of articoliAttivi()) {
-      const o = el("option", { value: a.articolo }, a.articolo + "  (Ne " + a.ne + "/1)");
+      const o = el("option", { value: a.articolo }, a.articolo + "  (Ne " + a.ne + "/" + (a.capi > 1 ? a.capi : 1) + ")");
       if (r.idArt === a.articolo) o.selected = true;
       sel.append(o);
     }
@@ -682,7 +723,7 @@ function disegnaRighe() {
       "aria-label": "Numero capi riga " + (i+1),
       oninput: e => { r.capi = Math.max(1, Math.floor(Number(e.target.value) || 1)); aggiornaRisultati(); } });
     const art = r.idArt ? trovaArticolo(r.idArt) : null;
-    const info = el("div", { class: "ne-info" }, art ? "Ne " + art.ne + "/1" : "—");
+    const info = el("div", { class: "ne-info" }, art ? "Ne " + art.ne + "/" + (art.capi > 1 ? art.capi : 1) : "—");
     const btnX = el("button", { class: "btn-x", title: "Rimuovi riga", "aria-label": "Rimuovi riga " + (i+1),
       onclick: () => { righe.splice(i, 1); if (righe.length === 0) righe.push({ idArt:null, capi:1 }); disegnaRighe(); aggiornaRisultati(); } }, "×");
 
@@ -718,7 +759,7 @@ function aggiornaRisultati() {
   document.querySelector("#ris-ne-finale").textContent = ris.neFinale;
   document.querySelector("#ris-ne-teorico").textContent = "teorico " + formatoNumIT(ris.neTeorico, 2);
   document.querySelector("#ris-nm").textContent = formatoNumIT(ris.nmFinale * 1000, 0);
-  document.querySelector("#ris-nm-nota").textContent = "Nm " + ris.nmFinale + " · metri per kg";
+  document.querySelector("#ris-nm-nota").textContent = "Nm " + (ris.nmFinale * 1000) + " metri per kg";
   document.querySelector("#ris-finezza").textContent = ris.finezza;
   document.querySelector("#ris-capi").textContent = ris.capiTotali;
   disegnaGrafico(ris.composizione);
@@ -776,6 +817,7 @@ document.querySelector("#btn-salva-config").addEventListener("click", () => {
     note: document.querySelector("#note-config").value.trim()
   });
   salvaPreferiti();
+  registraRecenti(r.voci.map(v => v.art.articolo));
   disegnaPreferiti();
   toast("Configurazione salvata nei preferiti");
 });
@@ -833,21 +875,102 @@ const DEFINIZIONI_FILTRI = [
 ];
 let filtriAttivi = []; // [{id, valore}]
 
+/* Articoli usati di recente (per tenerli "in rilievo" nella ricerca) */
+const CHIAVE_RECENTI = "filmar_rit_recenti_v1";
+let recenti = leggiDato(CHIAVE_RECENTI, []);
+function registraRecenti(nomi) {
+  for (const n of [...nomi].reverse()) {
+    const i = recenti.indexOf(n);
+    if (i >= 0) recenti.splice(i, 1);
+    recenti.unshift(n);
+  }
+  recenti = recenti.slice(0, 20);
+  salvaDato(CHIAVE_RECENTI, recenti);
+}
+
+/* Stato della selezione articoli nella ricerca */
+let selezioneRicerca = null;      // Set di nomi selezionati (null = da inizializzare)
+let extraMostrati = new Set();    // articoli aggiunti tramite la barra di ricerca
+
+function articoliEvidenza() {
+  const attivi = articoliAttivi();
+  const nomiAttivi = new Set(attivi.map(a => a.articolo));
+  const lista = [];
+  for (const n of recenti) if (nomiAttivi.has(n) && !lista.includes(n)) lista.push(n);
+  for (const a of attivi) if (!lista.includes(a.articolo)) lista.push(a.articolo);
+  return lista.slice(0, CONFIG.MAX_ARTICOLI_EVIDENZA);
+}
+
 function disegnaListaArticoliRicerca() {
   const cont = document.querySelector("#lista-articoli-ricerca");
-  const selezionati = new Set($$("#lista-articoli-ricerca input:checked").map(i => i.value));
-  const primaVolta = cont.childElementCount === 0;
+  const nomiAttivi = new Set(articoliAttivi().map(a => a.articolo));
+  const evidenza = articoliEvidenza();
+  if (selezioneRicerca === null) selezioneRicerca = new Set(); // si parte senza nulla di selezionato
+  // elimina dalla selezione articoli disattivati o rimossi dall'archivio
+  for (const n of [...selezioneRicerca]) if (!nomiAttivi.has(n)) selezioneRicerca.delete(n);
+  for (const n of [...extraMostrati]) if (!nomiAttivi.has(n)) extraMostrati.delete(n);
+
+  const mostrati = [...new Set([...evidenza, ...extraMostrati, ...selezioneRicerca])];
   cont.innerHTML = "";
-  for (const a of articoliAttivi()) {
-    const check = el("input", { type: "checkbox", value: a.articolo });
-    if (primaVolta || selezionati.has(a.articolo)) check.checked = true;
-    cont.append(el("label", { class: "tag" }, check, a.articolo + " (Ne " + a.ne + ")"));
+  for (const nome of mostrati) {
+    const a = trovaArticolo(nome);
+    if (!a) continue;
+    const check = el("input", { type: "checkbox", value: nome,
+      onchange: e => { e.target.checked ? selezioneRicerca.add(nome) : selezioneRicerca.delete(nome); } });
+    check.checked = selezioneRicerca.has(nome);
+    cont.append(el("label", { class: "tag" }, check, nome + " (Ne " + a.ne + "/" + (a.capi > 1 ? a.capi : 1) + ")"));
   }
 }
-document.querySelector("#btn-sel-tutti").addEventListener("click", () =>
-  $$("#lista-articoli-ricerca input").forEach(i => i.checked = true));
-document.querySelector("#btn-sel-nessuno").addEventListener("click", () =>
-  $$("#lista-articoli-ricerca input").forEach(i => i.checked = false));
+document.querySelector("#btn-sel-tutti").addEventListener("click", () => {
+  $$("#lista-articoli-ricerca input").forEach(i => { i.checked = true; selezioneRicerca.add(i.value); });
+});
+document.querySelector("#btn-sel-nessuno").addEventListener("click", () => {
+  selezioneRicerca.clear();
+  $$("#lista-articoli-ricerca input").forEach(i => i.checked = false);
+});
+
+/* Barra di ricerca con tendina per aggiungere articoli */
+const campoCercaArt = document.querySelector("#cerca-articolo-ricerca");
+const tendinaArt = document.querySelector("#tendina-articoli");
+
+function apriTendina() {
+  const testo = campoCercaArt.value.trim().toLowerCase();
+  const trovati = articoliAttivi()
+    .filter(a => a.articolo.toLowerCase().includes(testo))
+    .slice(0, 12);
+  tendinaArt.innerHTML = "";
+  if (trovati.length === 0) {
+    tendinaArt.append(el("div", { class: "nessuna" }, "Nessun articolo trovato"));
+  } else {
+    for (const a of trovati) {
+      const gia = selezioneRicerca && selezioneRicerca.has(a.articolo);
+      tendinaArt.append(el("div", { class: "voce" + (gia ? " gia" : ""),
+        onmousedown: ev => { ev.preventDefault(); scegliArticoloTendina(a.articolo); } },
+        el("span", null, (gia ? "✓ " : "") + a.articolo),
+        el("span", { class: "titolo-art" }, "Ne " + a.ne + "/" + (a.capi > 1 ? a.capi : 1))
+      ));
+    }
+  }
+  tendinaArt.hidden = false;
+}
+function scegliArticoloTendina(nome) {
+  if (selezioneRicerca.has(nome)) selezioneRicerca.delete(nome);
+  else { selezioneRicerca.add(nome); extraMostrati.add(nome); }
+  disegnaListaArticoliRicerca();
+  apriTendina();
+}
+campoCercaArt.addEventListener("input", apriTendina);
+campoCercaArt.addEventListener("focus", apriTendina);
+campoCercaArt.addEventListener("blur", () => { setTimeout(() => tendinaArt.hidden = true, 150); });
+campoCercaArt.addEventListener("keydown", ev => {
+  if (ev.key === "Enter") {
+    const testo = campoCercaArt.value.trim().toLowerCase();
+    const primo = articoliAttivi().find(a => a.articolo.toLowerCase().includes(testo));
+    if (primo) scegliArticoloTendina(primo.articolo);
+    ev.preventDefault();
+  }
+  if (ev.key === "Escape") tendinaArt.hidden = true;
+});
 
 document.querySelector("#btn-aggiungi-filtro").addEventListener("click", () => {
   const sel = document.querySelector("#scelta-filtro");
@@ -909,8 +1032,9 @@ let ordinamento = { col: "neFinale", asc: true };
 document.querySelector("#btn-cerca").addEventListener("click", () => {
   const neMin = Number(document.querySelector("#f-ne-min").value) || 1;
   const neMax = Number(document.querySelector("#f-ne-max").value) || 999;
-  const nomi = $$("#lista-articoli-ricerca input:checked").map(i => i.value);
+  const nomi = selezioneRicerca ? [...selezioneRicerca].filter(n => { const a = trovaArticolo(n); return a && a.attivo; }) : [];
   if (nomi.length < 2) { toast("Seleziona almeno due articoli utilizzabili"); return; }
+  registraRecenti(nomi);
   const arts = nomi.map(trovaArticolo).filter(Boolean);
   const maxCapi = Math.max(2, Math.min(12, valoreFiltro("capiMax", CONFIG.MAX_CAPI_RICERCA)));
   const maxRis  = Math.max(1, valoreFiltro("maxRisultati", CONFIG.MAX_RISULTATI));
@@ -1069,7 +1193,7 @@ function disegnaArchivio() {
     check.checked = !!a.attivo;
     corpo.append(el("tr", null,
       el("td", null, a.articolo),
-      el("td", { class:"num" }, a.ne + "/1"),
+      el("td", { class:"num" }, a.ne + "/" + (a.capi > 1 ? a.capi : 1)),
       el("td", { class:"num" }, String(a.cotone||0)),
       el("td", { class:"num" }, String(a.cashmere||0)),
       el("td", { class:"num" }, String(a.seta||0)),
@@ -1097,7 +1221,7 @@ function disegnaArchivio() {
 }
 document.querySelector("#cerca-archivio").addEventListener("input", disegnaArchivio);
 
-const CAMPI_FORM = ["nome","ne","cotone","cashmere","seta","lana","lino","canapa","poliammide","altre","note"];
+const CAMPI_FORM = ["nome","ne","capi","cotone","cashmere","seta","lana","lino","canapa","poliammide","altre","note"];
 function leggiForm() {
   const v = {};
   for (const c of CAMPI_FORM) v[c] = document.querySelector("#a-" + c).value;
@@ -1106,8 +1230,10 @@ function leggiForm() {
 function svuotaForm() {
   for (const c of CAMPI_FORM) {
     const inp = document.querySelector("#a-" + c);
-    inp.value = (c === "nome" || c === "note" || c === "ne") ? "" : "0";
+    if (c === "capi") inp.value = "1";
+    else inp.value = (c === "nome" || c === "note" || c === "ne") ? "" : "0";
   }
+  document.querySelector("#a-nm").value = "";
   indiceModifica = null;
   document.querySelector("#titolo-form-archivio").textContent = "Nuovo articolo";
   document.querySelector("#btn-annulla-articolo").hidden = true;
@@ -1116,6 +1242,8 @@ function avviaModifica(i) {
   const a = archivio[i];
   document.querySelector("#a-nome").value = a.articolo;
   document.querySelector("#a-ne").value = a.ne;
+  document.querySelector("#a-capi").value = a.capi > 1 ? a.capi : 1;
+  neVersoNm();
   for (const f of FIBRE) document.querySelector("#a-" + (f.chiave === "altre" ? "altre" : f.chiave)).value = a[f.chiave] || 0;
   document.querySelector("#a-note").value = a.note || "";
   indiceModifica = i;
@@ -1125,6 +1253,19 @@ function avviaModifica(i) {
 }
 document.querySelector("#btn-annulla-articolo").addEventListener("click", svuotaForm);
 
+/* Conversione automatica tra i due titoli nel form archivio:
+   Nm = Ne x 1,69  e  Ne = Nm / 1,69 (fattore in CONFIG.FATTORE_NM). */
+function neVersoNm() {
+  const ne = Number(document.querySelector("#a-ne").value);
+  document.querySelector("#a-nm").value = ne > 0 ? Math.round(ne * CONFIG.FATTORE_NM * 10) / 10 : "";
+}
+function nmVersoNe() {
+  const nm = Number(document.querySelector("#a-nm").value);
+  document.querySelector("#a-ne").value = nm > 0 ? Math.round(nm / CONFIG.FATTORE_NM * 10) / 10 : "";
+}
+document.querySelector("#a-ne").addEventListener("input", neVersoNm);
+document.querySelector("#a-nm").addEventListener("input", nmVersoNe);
+
 document.querySelector("#btn-salva-articolo").addEventListener("click", () => {
   const v = leggiForm();
   const nome = v.nome.trim();
@@ -1132,7 +1273,8 @@ document.querySelector("#btn-salva-articolo").addEventListener("click", () => {
   if (!nome) { toast("Indica il nome dell'articolo"); return; }
   if (!ne || ne <= 0) { toast("Indica un titolo Ne valido"); return; }
   let sommaFibre = 0;
-  const nuovo = { articolo: nome, ne, attivo: true, note: v.note.trim() };
+  const capiArt = Math.max(1, Math.floor(Number(v.capi) || 1));
+  const nuovo = { articolo: nome, ne, capi: capiArt, attivo: true, note: v.note.trim() };
   for (const f of FIBRE) {
     const p = Number(v[f.chiave]) || 0;
     if (p < 0 || p > 100) { toast("Le percentuali devono essere tra 0 e 100"); return; }
@@ -1165,11 +1307,13 @@ document.querySelector("#btn-ripristina").addEventListener("click", () => {
 });
 
 /* ---------- CSV archivio ---------- */
-const INTESTAZIONE_CSV = ["articolo","ne","cotone","cashmere","seta","lana","lino","canapa","poliammide","altre","attivo","note"];
+const INTESTAZIONE_CSV = ["articolo","ne","capi","cotone","cashmere","seta","lana","lino","canapa","poliammide","altre","attivo","note"];
 
 document.querySelector("#btn-export-csv").addEventListener("click", () => {
   const righeCsv = archivio.map(a => INTESTAZIONE_CSV.map(c =>
-    csvCella(c === "attivo" ? (a.attivo ? "si" : "no") : (a[c] != null ? a[c] : ""))).join(";"));
+    csvCella(c === "attivo" ? (a.attivo ? "si" : "no")
+      : c === "capi" ? (a.capi > 1 ? a.capi : 1)
+      : (a[c] != null ? a[c] : ""))).join(";"));
   scaricaFile("archivio_filati_filmar.csv",
     "\uFEFF" + INTESTAZIONE_CSV.join(";") + "\r\n" + righeCsv.join("\r\n"), "text/csv;charset=utf-8");
   toast("Archivio esportato in CSV");
@@ -1220,7 +1364,8 @@ function importaRigheTabella(matrice) {
     const nome = String(riga[idx.articolo] || "").trim();
     const ne = Number(String(riga[idx.ne] || "").replace(",", "."));
     if (!nome || !ne || ne <= 0) { scartati++; continue; }
-    const nuovo = { articolo: nome, ne, attivo: true, note: "" };
+    const nuovo = { articolo: nome, ne, capi: 1, attivo: true, note: "" };
+    if (idx.capi >= 0) nuovo.capi = Math.max(1, Math.floor(Number(String(riga[idx.capi]||"1").replace(",", ".")) || 1));
     for (const f of FIBRE)
       nuovo[f.chiave] = idx[f.chiave] >= 0 ? (Number(String(riga[idx[f.chiave]]||"0").replace(",", ".")) || 0) : 0;
     if (idx.attivo >= 0) {
@@ -1260,7 +1405,9 @@ function avvisoExcel() {
 document.querySelector("#btn-export-xlsx").addEventListener("click", () => {
   caricaSheetJS().then(() => {
     const dati = [INTESTAZIONE_CSV].concat(archivio.map(a =>
-      INTESTAZIONE_CSV.map(c => c === "attivo" ? (a.attivo ? "si" : "no") : (a[c] != null ? a[c] : ""))));
+      INTESTAZIONE_CSV.map(c => c === "attivo" ? (a.attivo ? "si" : "no")
+        : c === "capi" ? (a.capi > 1 ? a.capi : 1)
+        : (a[c] != null ? a[c] : ""))));
     const foglio = XLSX.utils.aoa_to_sheet(dati);
     const libro = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(libro, foglio, "Archivio");
